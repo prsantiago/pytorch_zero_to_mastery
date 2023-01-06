@@ -4,6 +4,7 @@ A series of helper functions used throughout the course.
 If a function gets defined once and could be used over and over, it'll go in here.
 """
 import torch
+import torchmetrics
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -19,6 +20,88 @@ import requests
 # Walk through an image classification directory and find out how many files (images)
 # are in each subdirectory.
 import os
+
+def eval_model(model: torch.nn.Module, data_loader: torch.utils.data.DataLoader, loss_fn: torch.nn.Module, acc_fn: torchmetrics.Accuracy, device: torch.device):
+    """ Returns a dictionary containing the results of model predicting on data_loader
+
+    Args:
+        model (torch.nn.Module): A PyTorch model capable of making predictions on data_loader.
+        data_loader (torch.utils.data.DataLoader): The target dataset to predict on.
+        loss_fn (torch.nn.Module): The loss function of model.
+        acc_fn (torchmetrics.Accuracy): An accuracy function to campare the models predictions to the truth labels.
+        device (str, optional): Target device to compute on. Defaults to device.
+
+    Returns:
+        dict: Results of model making predictions on data_loader
+    """
+    loss, acc = 0, 0
+    model.eval()
+
+    with torch.inference_mode():
+        for X, y in data_loader:
+            X, y = X.to(device), y.to(device)
+            preds = model(X)
+
+            loss += loss_fn(preds, y)
+            acc += acc_fn(preds.argmax(dim=1), y) # fo accuracy, need the predictions label
+
+        loss /= len(data_loader)
+        acc /= len(data_loader)
+
+    return {
+        "model_name": model.__class__.__name__, # only works when model was created with a class
+        "model_loss": loss.item(),
+        "model_acc": acc.item()
+    }
+
+def train_step(model: torch.nn.Module,
+               dataloader: torch.utils.data.DataLoader,
+               loss_fn: torch.nn.Module,
+               optimizer: torch.optim.Optimizer,
+               acc_fn: torchmetrics.Metric,
+               device: torch.device):
+    train_loss, train_acc = 0,0 
+    model.train()
+    
+    for X, y in dataloader:
+        X, y = X.to(device), y.to(device)
+        
+        pred = model(X)
+
+        loss = loss_fn(pred, y)
+        train_loss += loss
+        train_acc += acc_fn(y, pred.argmax(dim=1)) 
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    # Calculate loss and accuracy per epoch and print out what's happening
+    train_loss /= len(dataloader)
+    train_acc /= len(dataloader)
+    print(f"Train loss: {train_loss:.5f} | Train accuracy: {train_acc:.4f}")
+
+def test_step(model: torch.nn.Module,
+                dataloader: torch.utils.data.DataLoader,
+                loss_fn: torch.nn.Module,
+                acc_fn: torchmetrics.Metric,
+                device: torch.device):
+    test_loss, test_acc = 0, 0
+    model.eval()
+
+    with torch.inference_mode():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+
+            pred = model(X)
+
+            test_loss += loss_fn(pred, y)
+            test_acc += acc_fn(y, pred.argmax(dim=1))
+
+        # Calculate loss and accuracy per epoch and print out what's happening
+        test_loss /= len(dataloader)
+        test_acc /= len(dataloader)
+        print(f"Test loss: {test_loss:.5f} | Test accuracy: {test_acc:.4f}")   
 
 def walk_through_dir(dir_path):
     """
